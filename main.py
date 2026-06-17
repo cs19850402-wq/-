@@ -17,5 +17,6 @@ def home():
 
     return "<br>".join(result)
 
-if __name__ == "__main__":1
-    app.run(host="0.0.0.0", port=8080)
+if __name__ == "__main__":
+
+   s app.run(host="0.0.0.0", port=8080)

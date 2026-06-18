@@ -6,6 +6,7 @@ app = Flask(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+
 def get_trending():
     url = "https://api.github.com/search/repositories?q=stars:>1000&sort=stars&order=desc"
 
@@ -13,16 +14,20 @@ def get_trending():
         url,
         headers={
             "Accept": "application/vnd.github+json"
-        }
+        },
+        timeout=30
     )
 
     if response.status_code == 200:
-        return response.json()["items"][:10]
+        return response.json().get("items", [])[:5]
 
     return []
 
 
 def analyze_repo(repo_name, description):
+
+    if not GEMINI_API_KEY:
+        return "❌ GEMINI_API_KEY 未設定"
 
     prompt = f"""
 你是一位創業分析師。
@@ -45,7 +50,10 @@ def analyze_repo(repo_name, description):
 最後給一句商機評價。
 """
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    )
 
     payload = {
         "contents": [
@@ -60,14 +68,25 @@ def analyze_repo(repo_name, description):
     }
 
     try:
-        r = requests.post(url, json=payload)
+
+        r = requests.post(
+            url,
+            json=payload,
+            timeout=60
+        )
+
+        if r.status_code != 200:
+            return f"❌ HTTP {r.status_code}<br><pre>{r.text}</pre>"
 
         data = r.json()
 
+        if "candidates" not in data:
+            return f"❌ Gemini回傳異常<br><pre>{r.text}</pre>"
+
         return data["candidates"][0]["content"]["parts"][0]["text"]
 
-    except:
-        return "Gemini分析失敗"
+    except Exception as e:
+        return f"❌ Exception<br><pre>{str(e)}</pre>"
 
 
 @app.route("/")
@@ -76,11 +95,17 @@ def home():
     repos = get_trending()
 
     html = """
-    <h1>AI 商機雷達 V1</h1>
-    <hr>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>AI 商機雷達 V1</title>
+    </head>
+    <body>
+        <h1>AI 商機雷達 V1</h1>
+        <hr>
     """
 
-    for repo in repos[:5]:
+    for repo in repos:
 
         analysis = analyze_repo(
             repo["full_name"],
@@ -90,18 +115,23 @@ def home():
         html += f"""
         <h2>{repo['full_name']}</h2>
 
+        <p>
         ⭐ {repo['stargazers_count']} Stars
+        </p>
 
-        <br><br>
-
-        {repo.get('description','')}
-
-        <br><br>
+        <p>
+        {repo.get('description', '無描述')}
+        </p>
 
         <pre>{analysis}</pre>
 
         <hr>
         """
+
+    html += """
+    </body>
+    </html>
+    """
 
     return html
 

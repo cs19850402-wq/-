@@ -10,16 +10,20 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 def get_trending():
     url = "https://api.github.com/search/repositories?q=stars:>1000&sort=stars&order=desc"
 
-    response = requests.get(
-        url,
-        headers={
-            "Accept": "application/vnd.github+json"
-        },
-        timeout=30
-    )
+    try:
+        response = requests.get(
+            url,
+            headers={
+                "Accept": "application/vnd.github+json"
+            },
+            timeout=30
+        )
 
-    if response.status_code == 200:
-        return response.json().get("items", [])[:5]
+        if response.status_code == 200:
+            return response.json().get("items", [])
+
+    except Exception:
+        pass
 
     return []
 
@@ -76,12 +80,12 @@ def analyze_repo(repo_name, description):
         )
 
         if r.status_code != 200:
-            return f"❌ HTTP {r.status_code}<br><pre>{r.text}</pre>"
+            return f"❌ Gemini API 錯誤<br><pre>{r.text}</pre>"
 
         data = r.json()
 
         if "candidates" not in data:
-            return f"❌ Gemini回傳異常<br><pre>{r.text}</pre>"
+            return f"❌ Gemini 回傳異常<br><pre>{r.text}</pre>"
 
         return data["candidates"][0]["content"]["parts"][0]["text"]
 
@@ -94,46 +98,47 @@ def home():
 
     repos = get_trending()
 
-    html = """
+    if not repos:
+        return "<h1>❌ 無法取得 GitHub 資料</h1>"
+
+    # 只分析第一個 Repo，避免 Gemini 免費額度爆掉
+    repo = repos[0]
+
+    analysis = analyze_repo(
+        repo["full_name"],
+        repo.get("description", "")
+    )
+
+    return f"""
     <html>
     <head>
         <meta charset="utf-8">
         <title>AI 商機雷達 V1</title>
     </head>
+
     <body>
+
         <h1>AI 商機雷達 V1</h1>
+
         <hr>
-    """
 
-    for repo in repos:
-
-        analysis = analyze_repo(
-            repo["full_name"],
-            repo.get("description", "")
-        )
-
-        html += f"""
         <h2>{repo['full_name']}</h2>
 
         <p>
-        ⭐ {repo['stargazers_count']} Stars
+            ⭐ {repo['stargazers_count']} Stars
         </p>
 
         <p>
-        {repo.get('description', '無描述')}
+            {repo.get('description', '無描述')}
         </p>
+
+        <hr>
 
         <pre>{analysis}</pre>
 
-        <hr>
-        """
-
-    html += """
     </body>
     </html>
     """
-
-    return html
 
 
 if __name__ == "__main__":
